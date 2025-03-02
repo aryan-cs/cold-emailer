@@ -4,10 +4,16 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
 
-GMAIL_USER = ""
-GMAIL_PASSWORD = ""
-TEMPLATE_FILE = ""
-SIGNATURE_HTML = """"""
+GMAIL_USER = "aryan.cs.app@gmail.com"
+GMAIL_PASSWORD = "btjk conk pxxm zlkm"
+TEMPLATE_FILE = "aryan.txt"
+SIGNATURE_HTML = """
+    <div><div><b style="color:rgb(136,136,136)"><span>Aryan Gupta</span></b></div></div>
+    <div><div><div style="color:rgb(136,136,136)">
+        <span style="font-size:12.8px">CompE &amp; Stats || AI/Mathematics Research</span><br>
+    </div><div><span style="font-size:12.8px"><u><a href="https://github.com/aryan-cs" target="_blank">
+        <font color="#3d85c6">https://github.com/aryan-cs</font></a></u></span></div></div></div>
+"""
 
 def send_email(company_name, role_name, company_email):
     subject = f"{role_name} Internship Role at {company_name}"

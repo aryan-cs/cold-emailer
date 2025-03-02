@@ -1,32 +1,33 @@
 import requests
-import re
 from bs4 import BeautifulSoup
+import re
+from googlesearch import search
 from urllib.parse import urljoin, urlparse
+import warnings
+from urllib3.exceptions import InsecureRequestWarning
+import csv
 
-def find_website(name):
-    query = name + " official website"
-    search_url = f"https://www.google.com/search?q={query.replace(' ', '+')}"
-    headers = {"User-Agent": "Mozilla/5.0"}
+warnings.simplefilter('ignore', InsecureRequestWarning)
 
-    response = requests.get(search_url, headers=headers)
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    for link in soup.find_all("a", href=True):
-        url_match = re.search(r"https?://(www\.)?([a-zA-Z0-9-]+)\.[a-z]{2,}", link["href"])
-        if url_match:
-            return url_match.group(0)  # Return first valid URL
-    return "Website not found"
+def get_company_website(company_name):
+    query = f'{company_name} official website'
+    # Perform a Google search and get the first result URL
+    search_results = search(query, num_results=1)
+    return next(search_results, None)
 
 email_list = ["info", "hr", "jobs", "careers", "humanresources", "recruitment", "hiring", "talent", "recruiter", "apply",
               "talent", "talentacquisition", "joinus", "opportunities", "workwithus", "recruit", "campushiring", "internships",
               "earlycareers", "techrecruitment", "staffing", "jobopenings", "careeropportunities", "employment", "nowhiring",
               "team", "wearehiring", "diversityhiring", "dei.recruitment", "headhunting", "specializedhiring"]
 
-EMAIL_REGEX = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+EMAIL_REGEX = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zAZ]{2,}"
 
-def scrape_emails(url, visited=set(), emails=set()):
+def scrape_emails(url, visited=set(), emails=set(), stop_flag=[False], csv_writer=None, company_name=""):
     try:
-        response = requests.get(url, timeout=5)
+        if stop_flag[0]:  # Check if we already found the email and want to stop
+            return
+
+        response = requests.get(url, timeout=5, verify=False)
         if response.status_code != 200:
             return
         
@@ -42,7 +43,18 @@ def scrape_emails(url, visited=set(), emails=set()):
                 front = email.split("@")[0]
                 if front in email_list:
                     valid_emails.append(email)
+                    stop_flag[0] = True  # Stop further scraping as soon as a match is found
+                    break  # Exit the loop after finding the first match
             emails.update(valid_emails)
+
+            if valid_emails:
+                print(f"Found matching recruiting/career email: {valid_emails}")
+                # Write to CSV as soon as we find a valid email
+                csv_writer.writerow([company_name, valid_emails[0]])
+                stop_flag[0] = True  # Stop further scraping after writing to CSV
+
+        if stop_flag[0]:  # Stop recursion if we found a valid email
+            return
 
         # Extract internal links and visit them recursively
         for link in soup.find_all('a', href=True):
@@ -54,18 +66,37 @@ def scrape_emails(url, visited=set(), emails=set()):
             if parsed_url.netloc == urlparse(url).netloc and full_url not in visited:
                 visited.add(full_url)
                 print(f"Visiting: {full_url}")
-                scrape_emails(full_url, visited, emails)
+                scrape_emails(full_url, visited, emails, stop_flag, csv_writer, company_name)
 
     except Exception as e:
         print(f"Error visiting {url}: {e}")
 
+def process_companies(companies_file, output_csv):
+    with open(companies_file, 'r') as file:
+        companies = file.readlines()
 
-# start_url = "https://example.com" 
-# found_emails = set()
-# scrape_emails(start_url, emails=found_emails)
+    # Open CSV file for writing at the start of processing
+    with open(output_csv, 'w', newline='', encoding='utf-8') as csvfile:
+        writer = csv.writer(csvfile)
+        writer.writerow(["Company Name", "Recruiting Email"])
 
-# print("\nAll collected emails:")
-# for email in found_emails:
-#     print(email)
+        for company_name in companies:
+            company_name = company_name.strip()  # Clean up the name
+            print(f"Processing {company_name}...")
 
-print(find_website("Algebris"))
+            start_url = get_company_website(company_name)
+
+            if start_url:
+                print(f"Found website: {start_url}")
+                found_emails = set()
+                stop_flag = [False]  # Reset flag for each new company
+                scrape_emails(start_url, emails=found_emails, csv_writer=writer, company_name=company_name, stop_flag=stop_flag)
+            else:
+                print(f"Could not find the website for {company_name}.")
+                # If no website is found, write empty email to the CSV
+                writer.writerow([company_name, ""])
+
+    print(f"Results saved to {output_csv}")
+
+# Example usage:
+process_companies('companies.txt', 'company_emails.csv')
