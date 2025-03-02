@@ -6,6 +6,7 @@ from urllib.parse import urljoin, urlparse
 import warnings
 from urllib3.exceptions import InsecureRequestWarning
 import csv
+from collections import defaultdict
 
 warnings.simplefilter('ignore', InsecureRequestWarning)
 
@@ -22,10 +23,8 @@ email_list = ["info", "hr", "jobs", "careers", "humanresources", "recruitment", 
 
 EMAIL_REGEX = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zAZ]{2,}"
 
-def scrape_emails(url, visited=set(), emails=set(), stop_flag=[False], csv_writer=None, company_name=""):
+def scrape_emails(url, visited=set(), emails=set(), csv_writer=None, company_name="", same_pages=defaultdict(int)):
     try:
-        if stop_flag[0]:  # Check if we already found the email and want to stop
-            return
 
         response = requests.get(url, timeout=5, verify=False)
         if response.status_code != 200:
@@ -43,30 +42,28 @@ def scrape_emails(url, visited=set(), emails=set(), stop_flag=[False], csv_write
                 front = email.split("@")[0]
                 if front in email_list:
                     valid_emails.append(email)
-                    stop_flag[0] = True  # Stop further scraping as soon as a match is found
-                    break  # Exit the loop after finding the first match
             emails.update(valid_emails)
 
             if valid_emails:
                 print(f"Found matching recruiting/career email: {valid_emails}")
                 # Write to CSV as soon as we find a valid email
                 csv_writer.writerow([company_name, valid_emails[0]])
-                stop_flag[0] = True  # Stop further scraping after writing to CSV
-
-        if stop_flag[0]:  # Stop recursion if we found a valid email
-            return
+                
 
         # Extract internal links and visit them recursively
         for link in soup.find_all('a', href=True):
             href = link.get('href')
             full_url = urljoin(base_url, href)
             parsed_url = urlparse(full_url)
-
+            subheading = full_url.split('/')[3] if len(full_url.split('/')) > 4 else full_url
             # Ensure it's an internal link and hasn't been visited
-            if parsed_url.netloc == urlparse(url).netloc and full_url not in visited:
+
+
+            if parsed_url.netloc == urlparse(url).netloc and full_url not in visited and same_pages[subheading] <= 10:
                 visited.add(full_url)
+                same_pages[subheading] += 1
                 print(f"Visiting: {full_url}")
-                scrape_emails(full_url, visited, emails, stop_flag, csv_writer, company_name)
+                scrape_emails(full_url, visited, emails, csv_writer, company_name)
 
     except Exception as e:
         print(f"Error visiting {url}: {e}")
@@ -89,8 +86,7 @@ def process_companies(companies_file, output_csv):
             if start_url:
                 print(f"Found website: {start_url}")
                 found_emails = set()
-                stop_flag = [False]  # Reset flag for each new company
-                scrape_emails(start_url, emails=found_emails, csv_writer=writer, company_name=company_name, stop_flag=stop_flag)
+                scrape_emails(start_url, emails=found_emails, csv_writer=writer, company_name=company_name)
             else:
                 print(f"Could not find the website for {company_name}.")
                 # If no website is found, write empty email to the CSV
